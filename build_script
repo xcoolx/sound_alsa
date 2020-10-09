@@ -1,0 +1,7 @@
+#!/bin/bash
+
+aarch64-linux-gnu-gcc -c -o alsa.o alsa.c
+aarch64-linux-gnu-gcc -v --sysroot=/home/dmytro/Sandbox/cross_copmiling/alsa/sysroot -isysroot=/home/dmytro/Sandbox/cross_copmiling/alsa/sysroot  -o alsa alsa.o -lasound
+#aarch64-linux-gnu-gcc -v --sysroot=/home/dmytro/Sandbox/cross_copmiling/alsa/sysroot -isysroot=/home/dmytro/Sandbox/cross_copmiling/alsa/sysroot  -o alsa alsa.o -l:libasound.so.2.0.0 
+#-I/home/dmytro/Projects/OpenSynergy/coqos_virtio/bsp/linux/yocto/renesas-rcar-gen3-linux-sdk-core-image-weston-qt5-ivi-testing/sysroots/aarch64-poky-linux/usr/include/alsa/
+
