@@ -37,177 +37,396 @@ enum format {
     sample_error
 };
 
-int main(int argc, char **argv) {
-	unsigned int pcm, tmp, dir;
-	int rate, channels;
-	snd_pcm_t *pcm_handle;
-	snd_pcm_hw_params_t *params;
-	snd_pcm_uframes_t frames;
-	snd_pcm_uframes_t write = 0;
-        unsigned int shift = 0;
-	char *buff;
-	int buff_size, loops;
+static char* format_str[] = {
+    [0]            = "format         : not supported\n",
+    [sample_8]     = "format         : SND_PCM_FORMAT_S8\n",
+    [sample_16]    = "format         : SND_PCM_FORMAT_S16_LE\n",
+    [sample_24_3]  = "format         : SND_PCM_FORMAT_S24_3LE\n",
+    [sample_32]    = "format         : SND_PCM_FORMAT_S32_LE\n",
+    [sample_24_4]  = "format         : SND_PCM_FORMAT_S24_LE\n",
+    [sample_float] = "format         : SND_PCM_FORMAT_FLOAT_LE\n",
+    [sample_error] = "format         : error!\n"
+};
+
+struct pcm_parameters {
+	int rate;
+        int channels;	
+	snd_pcm_uframes_t period;
         snd_pcm_format_t pcm_format;
-        unsigned buffer_time = 500000;
-	unsigned period_time = 0;
+        unsigned buffer_time;
+	unsigned period_time;
+        unsigned sample_size;
+        unsigned period_bytes;
+};
 
-        enum format sample_format;
-        int sample_size = 0;
-        char* format_str[] = {
-            [0]            = "format          : not supported\n",
-            [sample_8]     = "format          : SND_PCM_FORMAT_S8\n",
-            [sample_16]    = "format          : SND_PCM_FORMAT_S16_LE\n",
-            [sample_24_3]  = "format          : SND_PCM_FORMAT_S24_3LE\n",
-            [sample_32]    = "format          : SND_PCM_FORMAT_S32_LE\n",
-            [sample_24_4]  = "format          : SND_PCM_FORMAT_S24_LE\n",
-            [sample_float] = "format          : SND_PCM_FORMAT_FLOAT_LE\n",
-            [sample_error] = "format          : error!\n"
-        };
+int custom_print_boundary_info(snd_pcm_t *pcm_handle, snd_pcm_hw_params_t *hw_params) {
+    printf("**********************************DEBUG \n");
+    int pcm;
+    unsigned int buffer_time_temp = 0;
+    unsigned int period_time_temp = 0;
+    unsigned int channels_temp = 0;
+    unsigned int rate_temp = 0;
+    snd_pcm_uframes_t period_temp = 0;
+    snd_pcm_uframes_t buffer_temp = 0;
+    snd_pcm_format_t format_temp;
 
-	printf("Usage: %s <sample_rate> <format> <channels>\n", argv[0]);
+    /*time period*/
+    pcm = snd_pcm_hw_params_get_period_time_min(hw_params, &period_time_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get period time: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("period time min    : %d\n", period_time_temp);
+    pcm = snd_pcm_hw_params_get_period_time_max(hw_params, &period_time_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get period time: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("period time max    : %d\n", period_time_temp);
+    /*time buffer*/
+    pcm = snd_pcm_hw_params_get_buffer_time_min(hw_params, &buffer_time_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get buffer time: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("buffer time min    : %d\n", buffer_time_temp);
+    pcm = snd_pcm_hw_params_get_buffer_time_max(hw_params, &buffer_time_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get buffer time: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("buffer time max    : %d\n", buffer_time_temp);
+    /*channels*/
+    pcm = snd_pcm_hw_params_get_channels_min(hw_params, &channels_temp);
+    if (pcm < 0) {
+        printf("ERROR: can't get channels number: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("channels min       : %d\n", channels_temp);
+    pcm = snd_pcm_hw_params_get_channels_max(hw_params, &channels_temp);
+    if (pcm < 0) {
+        printf("ERROR: can't get channels number: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("channels max       : %d\n", channels_temp);
+    /*rate*/
+    pcm = snd_pcm_hw_params_get_rate_min(hw_params, &rate_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get rate: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("rate  min          : %d\n", rate_temp);
+    pcm = snd_pcm_hw_params_get_rate_max(hw_params, &rate_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get rate: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("rate  max          : %d\n", rate_temp);
+    /*period*/
+    pcm = snd_pcm_hw_params_get_period_size_min(hw_params, &period_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get period size: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("period size min    : %d\n", (int)period_temp);
+    pcm = snd_pcm_hw_params_get_period_size_max(hw_params, &period_temp, 0);
+    if (pcm < 0) {
+        printf("ERROR: can't get period size: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("period size max    : %d\n", (int)period_temp);
+    /*buffer*/
+    pcm = snd_pcm_hw_params_get_buffer_size_min(hw_params, &buffer_temp);
+    if (pcm < 0) {
+        printf("ERROR: can't get buffer size: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("buffer size min    : %d\n", (int)buffer_temp);
+    pcm = snd_pcm_hw_params_get_buffer_size_max(hw_params, &buffer_temp);
+    if (pcm < 0) {
+        printf("ERROR: can't get buffer size: %s\n", snd_strerror(pcm));
+        goto error_handling;
+    }
+    printf("buffer size max    : %d\n", (int)buffer_temp);
+
+
+    printf("Available formats:\n");
+    for (format_temp = 0; format_temp < SND_PCM_FORMAT_LAST; format_temp++) {
+        if (snd_pcm_hw_params_test_format(pcm_handle, hw_params, format_temp) == 0)
+            printf("- %s\n", snd_pcm_format_name(format_temp));
+    }
+    printf("**********************************DEBUG_END\n");
+    
+    return 0;
+    error_handling:
+        return pcm;
+}
+
+static int hw_params_set(snd_pcm_t *pcm_handle, snd_output_t *log, struct pcm_parameters* expected) {
+        snd_pcm_hw_params_t *params;
+        int pcm;
+        int dir;
+
+	/* Allocate parameters object and fill it with default values*/
+	snd_pcm_hw_params_alloca(&params);
+
+ 	pcm = snd_pcm_hw_params_any(pcm_handle, params);
+        if (pcm < 0) {
+                printf("Broken configuration for this PCM: no configurations available\n");
+                goto error_handling;
+        }
+
+        printf("hw boundary params  ***********************\n");
+        snd_pcm_hw_params_dump(params, log);
+        printf("*******************************************\n");
+
+	/* Set parameters */
+	pcm = snd_pcm_hw_params_set_access(pcm_handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+        if (pcm < 0) {
+                printf("ERROR: Can't set interleaved mode. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+        pcm = snd_pcm_hw_params_set_format(pcm_handle, params, expected->pcm_format);
+        if (pcm < 0) {
+	    printf("ERROR: Can't set format. %s\n", snd_strerror(pcm));
+            goto error_handling;
+        }
+
+	pcm = snd_pcm_hw_params_set_channels(pcm_handle, params, expected->channels);
+        if (pcm < 0) {
+		printf("ERROR: Can't set channels number. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+	pcm = snd_pcm_hw_params_set_rate_near(pcm_handle, params, &expected->rate, &dir);
+        if(pcm < 0) {
+		printf("ERROR: Can't set rate. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+        pcm = snd_pcm_hw_params_set_period_time_near(pcm_handle, params, &expected->period_time, 0);
+        if(pcm < 0) {
+                printf("ERROR: Can't set period_time. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+        pcm  = snd_pcm_hw_params_set_buffer_time_near(pcm_handle, params, &expected->buffer_time, 0);
+        if(pcm < 0) {
+                printf("ERROR: Can't set buffer time. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+        /* Write parameters */
+        pcm = snd_pcm_hw_params(pcm_handle, params);
+        if(pcm < 0) {
+                printf("ERROR: Can't set hardware parameters. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+	/* Resume information */
+    
+	pcm = snd_pcm_hw_params_get_channels(params, &expected->channels);
+	if (pcm < 0) {
+		printf("ERROR: can't get channels number: %s\n", snd_strerror(pcm));
+		goto error_handling;
+	}
+	pcm = snd_pcm_hw_params_get_rate(params, &expected->rate, 0);
+	if (pcm < 0) {
+		printf("ERROR: can't get rate: %s\n", snd_strerror(pcm));
+		goto error_handling;
+	}
+	pcm = snd_pcm_hw_params_get_period_size(params, &expected->period, 0);
+	if (pcm < 0) {
+		printf("ERROR: can't get period size: %s\n", snd_strerror(pcm));
+		goto error_handling;
+	}
+	pcm = snd_pcm_hw_params_get_format(params, &expected->pcm_format);
+	if (pcm < 0) {
+		printf("ERROR: can't get format: %s\n", snd_strerror(pcm));
+		goto error_handling;
+	}
+	pcm = snd_pcm_hw_params_get_period_time(params, &expected->period_time, 0);
+	if (pcm < 0) {
+		printf("ERROR: can't get period time: %s\n", snd_strerror(pcm));
+		goto error_handling;
+	}
+	pcm = snd_pcm_hw_params_get_buffer_time(params, &expected->buffer_time, 0);
+	if (pcm < 0) {
+		printf("ERROR: can't get buffer time: %s\n", snd_strerror(pcm));
+		goto error_handling;
+	}
+
+        expected->sample_size = snd_pcm_format_physical_width(expected->pcm_format) / 8;
+	expected->period_bytes = expected->period * expected->channels * expected->sample_size;
+        return 0;
+        error_handling:
+            return pcm;
+}
+
+static int sw_params_set(snd_pcm_t *pcm_handle, snd_output_t *log, struct pcm_parameters* expected) {
+        snd_pcm_sw_params_t *params;
+        int pcm;
+
+	/* Allocate parameters object and fill it with default values*/
+	snd_pcm_sw_params_alloca(&params);
+
+	snd_pcm_sw_params_current(pcm_handle, params);
+	pcm = snd_pcm_sw_params_set_avail_min(pcm_handle, params, expected->period);
+        if(pcm < 0) {
+                printf("ERROR: Can't set sw avail min. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+	pcm = snd_pcm_sw_params_set_start_threshold(pcm_handle, params, expected->period * 4);
+        if(pcm < 0) {
+                printf("ERROR: Can't set sw start threshold. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+	pcm = snd_pcm_sw_params_set_stop_threshold(pcm_handle, params, expected->period * 4);
+        if(pcm < 0) {
+                printf("ERROR: Can't set sw stop threshold. %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+
+	pcm = snd_pcm_sw_params(pcm_handle, params);
+        if(pcm < 0) {
+		printf("unable to install sw params:\n");
+		snd_pcm_sw_params_dump(params, log);
+		goto error_handling;
+	}
+        return 0;
+        error_handling:
+            return pcm;
+}
+
+int main(int argc, char **argv) {
+        snd_output_t *log = NULL;
+        snd_pcm_t *pcm_handle = NULL;
+        snd_pcm_uframes_t write = 0;
+        unsigned int shift = 0;
+	char *buff = NULL;
+        int pcm_format;
+        int tmp;
+        int pcm = 0;
+
+        struct pcm_parameters actual = {0};
+        struct pcm_parameters expected = {0};
+
+
+	printf("Usage: %s <sample_rate> <format> <channels> <buffer_time>\n", argv[0]);
 
         printf("\n************************\n");
-        printf("available <formats> list:\n");
+        printf("available <format> list:\n");
 	printf("Sample_8     = 1\n");
 	printf("Sample_16    = 2\n");
 	printf("Sample_24_3  = 3\n");
 	printf("Sample_32    = 4\n");
 	printf("Sample_24_4  = 5\n");
 	printf("sample_float = 6\n");
-	printf("show all PCM formats = 7\n");
 	printf("************************\n\n\n");
 
-	if (argc < 4) {
-        	return -1;
+	if (argc < 5) {
+                printf("Arguments number error\n");
+        	goto error_handling;
 	}
 
-	rate = atoi(argv[1]);
-        sample_format = atoi(argv[2]);
-        switch(sample_format) {
+	expected.rate = atoi(argv[1]);
+        pcm_format = atoi(argv[2]);
+        switch(pcm_format) {
            case sample_8:
-               pcm_format = SND_PCM_FORMAT_S8;
+               expected.pcm_format = SND_PCM_FORMAT_S8;
                break;
            case sample_16:
-               pcm_format = SND_PCM_FORMAT_S16_LE;
+               expected.pcm_format = SND_PCM_FORMAT_S16_LE;
                break;
            case sample_24_3:
-               pcm_format = SND_PCM_FORMAT_S24_3LE;
+               expected.pcm_format = SND_PCM_FORMAT_S24_3LE;
                break;
            case sample_32:
-               pcm_format = SND_PCM_FORMAT_S32_LE;
+               expected.pcm_format = SND_PCM_FORMAT_S32_LE;
                break;
            case sample_24_4:
-               pcm_format = SND_PCM_FORMAT_S24_LE;
+               expected.pcm_format = SND_PCM_FORMAT_S24_LE;
                break;
            case sample_float:
-               pcm_format = SND_PCM_FORMAT_FLOAT_LE;
+               expected.pcm_format = SND_PCM_FORMAT_FLOAT_LE;
                break;
-          case sample_error:
-               sample_size = 0;
-               pcm_format = SND_PCM_FORMAT_LAST;
+           case sample_error:
+               expected.pcm_format = SND_PCM_FORMAT_LAST;
                break;
            default:
-               exit(1);
+               goto error_handling;
         }
-        channels = atoi(argv[3]);
+        expected.channels = atoi(argv[3]);
+        expected.buffer_time = atoi(argv[4]);
+	expected.period_time = expected.buffer_time / 4;
         
+        if(SND_PCM_FORMAT_LAST == pcm_format) {
+            goto error_handling;
+        }
+
+        memcpy(&actual, &expected, sizeof(struct pcm_parameters));
+        pcm = snd_output_stdio_attach(&log, stdout, 0);
 	/* Open the PCM device in playback mode */
-	if (pcm = snd_pcm_open(&pcm_handle, PCM_DEVICE,
-					SND_PCM_STREAM_PLAYBACK, 0) < 0) 
+	pcm = snd_pcm_open(&pcm_handle, PCM_DEVICE,
+					SND_PCM_STREAM_PLAYBACK, 0);
+        if (pcm < 0) {
 		printf("ERROR: Can't open \"%s\" PCM device. %s\n",
 					PCM_DEVICE, snd_strerror(pcm));
-
-	/* Allocate parameters object and fill it with default values*/
-	snd_pcm_hw_params_alloca(&params);
-
-	snd_pcm_hw_params_any(pcm_handle, params);
-
-	/* Set parameters */
-	if (pcm = snd_pcm_hw_params_set_access(pcm_handle, params,
-					SND_PCM_ACCESS_RW_INTERLEAVED) < 0) 
-		printf("ERROR: Can't set interleaved mode. %s\n", snd_strerror(pcm));
-
-        if(SND_PCM_FORMAT_LAST == pcm_format) {
-            for (snd_pcm_format_t i = 0; i <= SND_PCM_FORMAT_LAST; i++) {
-                if (snd_pcm_hw_params_test_format(pcm_handle, params, i) == 0)
-                    fprintf(stderr, "- %s\n", snd_pcm_format_name(i));
-            }
-            exit(1);
-        }
-	else if (pcm = snd_pcm_hw_params_set_format(pcm_handle, params, pcm_format) < 0) {
-            for (snd_pcm_format_t i = 0; i <= SND_PCM_FORMAT_LAST; i++) {
-                if (snd_pcm_hw_params_test_format(pcm_handle, params, i) == 0)
-                    fprintf(stderr, "- %s\n", snd_pcm_format_name(i));
-            } 
-	    printf("ERROR: Can't set format. %s\n", snd_strerror(pcm));
+                goto error_handling;
         }
 
-	if (pcm = snd_pcm_hw_params_set_channels(pcm_handle, params, channels) < 0) 
-		printf("ERROR: Can't set channels number. %s\n", snd_strerror(pcm));
-
-	if (pcm = snd_pcm_hw_params_set_rate_near(pcm_handle, params, &rate, &dir) < 0) { 
-		printf("ERROR: Can't set rate. %s\n", snd_strerror(pcm));
-        } else {
-                printf("rate            : %d bps\n", pcm);
+        if (pcm < 0) {
+                printf("ERROR: Can't attach log %s\n", snd_strerror(pcm));
+                goto error_handling;
+        }
+        pcm = hw_params_set(pcm_handle, log, &actual);
+        if (pcm < 0) {
+                printf("HW parameters set fail\n");
+                goto error_handling;
         }
 
-        if (buffer_time > 500000) {
-            buffer_time = 500000;
+        pcm = sw_params_set(pcm_handle, log, &actual);
+        if (pcm < 0) {
+                printf("SW parameters set fail\n");
+                goto error_handling;
         }
-        period_time = buffer_time / 4;
 
-        pcm  = snd_pcm_hw_params_set_buffer_time_near(pcm_handle, params, &buffer_time, 0);
-        pcm |= snd_pcm_hw_params_set_period_time_near(pcm_handle, params, &period_time, 0);
-        assert(pcm >= 0);
-
-	sample_size = snd_pcm_format_physical_width(pcm_format) / 8;
-	/* Write parameters */
-	if (pcm = snd_pcm_hw_params(pcm_handle, params) < 0)
-		printf("ERROR: Can't set harware parameters. %s\n", snd_strerror(pcm));
-
-	/* Resume information */
-        
-	snd_pcm_hw_params_get_channels(params, &channels);
-	snd_pcm_hw_params_get_rate(params, &rate, 0);
-	
-
-	/* Allocate buffer to hold single period */
-	snd_pcm_hw_params_get_period_size(params, &frames, &dir);
-
-	buff_size = frames * channels * sample_size;
-	buff = (char *) malloc(buff_size);
+        buff = (char *) malloc(actual.period_bytes);
         if(buff == 0) {
             printf("buffer is not allocated");
             return 1;
         }
 
-
-	printf("PCM name        : '%s'\n", snd_pcm_name(pcm_handle));
-	printf("PCM state       : %s\n", snd_pcm_state_name(snd_pcm_state(pcm_handle)));
-        printf("%s", format_str[sample_format]);
-	printf("channels        : %i ", channels);
-
-	if (channels == 1)
-		printf("(mono)\n");
-	else if (channels == 2)
-		printf("(stereo)\n");
-        printf("rate            : %d bps\n", rate);
-        printf("size of sample  : %d bytes %d msbits\n",sample_size, sample_size * 8);
-        printf("period size     : %d \n", buff_size);
-        printf("frames          : %ld\n", frames);
-        //printf("buffer time     : %d \n", buffer_time);
-        printf("period time     : %d \n", period_time);
+        printf("print expected params *********************\n");
+        printf("rate           : %d\n", expected.rate);
+        printf("channels       : %d\n", expected.channels);
+        printf("%s", format_str[pcm_format]);
+        printf("buffer time    : %d\n", expected.buffer_time);
+        printf("period time    : %d\n", expected.period_time);
+        printf("print actual params ***********************\n");
+        printf("PCM name       : '%s'\n", snd_pcm_name(pcm_handle));
+        printf("PCM state      : %s\n", snd_pcm_state_name(snd_pcm_state(pcm_handle)));
+        printf("sample sz      : %d\n", actual.sample_size);
+        printf("period bytes   : %d\n", actual.period_bytes);
+        snd_pcm_dump(pcm_handle, log);
+        printf("*******************************************\n");
 
         do {
-            tmp = read(STDIN_FILENO, buff, buff_size);
+            tmp = read(STDIN_FILENO, buff, actual.period_bytes);
+            if(tmp != actual.period_bytes) {
+                 printf("read bytes %d expected %d\n", tmp, actual.period_bytes);
+            }
             if (tmp) {
                 do {
-                    pcm = snd_pcm_writei(pcm_handle, buff + shift, frames - write);
+                    pcm = snd_pcm_writei(pcm_handle, buff + shift, actual.period - write);
                     if(pcm > 0) {
                         write += pcm;
-                        shift = write * channels * sample_size;
+                        shift = write * actual.sample_size;
                     }
-                } while(pcm == -EAGAIN || (pcm >= 0 && write < frames));
+                } while(pcm == -EAGAIN || (pcm >= 0 && write < actual.period));
                 shift = 0;
                 write = 0;
 
@@ -222,15 +441,18 @@ int main(int argc, char **argv) {
                 }
                 if(pcm < 0) {
                     printf("playback. Can't recover device to SND_PCM_STATE_PREPARED. %s\n", snd_strerror(pcm));
-                    break;
+                    goto error_handling;
                 }
-                //write(fd1, buffer_out, nbytes);
             }
 	} while (tmp > 0);
 
-	snd_pcm_drain(pcm_handle);
-	snd_pcm_close(pcm_handle);
-	free(buff);
+error_handling:
+        if(pcm_handle) {
+	    snd_pcm_drain(pcm_handle);
+	    snd_pcm_close(pcm_handle); 
+        }
+        if(log) snd_output_close(log);
+	if(buff) free(buff);
 
-	return 0;
+	return pcm;
 }
